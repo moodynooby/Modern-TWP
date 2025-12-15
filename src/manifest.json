@@ -3,7 +3,7 @@
   "default_locale": "en",
   "name": "QuickyTranslate",
   "description": "__MSG_extensionDescription__",
-  "version": "2",
+  "version": "5",
   "homepage_url": "https://github.com/moodynooby/Quantum-Translate",
   "browser_specific_settings": {
     "gecko": {

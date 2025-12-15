@@ -574,7 +574,11 @@ twpConfig
     $("#enableIframePageTranslation").value = twpConfig.get(
       "enableIframePageTranslation"
     );
-
+    $("#useOldPopup").onchange = (e) => {
+      twpConfig.set("useOldPopup", e.target.value);
+      updateDarkMode();
+    };
+    $("#useOldPopup").value = twpConfig.get("useOldPopup");
     $("#dontSortResults").onchange = (e) => {
       twpConfig.set("dontSortResults", e.target.value);
     };
