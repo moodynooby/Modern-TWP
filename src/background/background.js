@@ -2,28 +2,26 @@
 
 // get mimetype
 var tabToMimeType = {};
-if (typeof chrome !== "undefined" && chrome.webRequest) {
-  chrome.webRequest.onHeadersReceived.addListener(
-    function (details) {
-      if (details.tabId !== -1) {
-        let contentTypeHeader = null;
-        for (const header of details.responseHeaders) {
-          if (header.name.toLowerCase() === "content-type") {
-            contentTypeHeader = header;
-            break;
-          }
+chrome.webRequest.onHeadersReceived.addListener(
+  function (details) {
+    if (details.tabId !== -1) {
+      let contentTypeHeader = null;
+      for (const header of details.responseHeaders) {
+        if (header.name.toLowerCase() === "content-type") {
+          contentTypeHeader = header;
+          break;
         }
-        tabToMimeType[details.tabId] =
-          contentTypeHeader && contentTypeHeader.value.split(";", 1)[0];
       }
-    },
-    {
-      urls: ["*://*/*"],
-      types: ["main_frame"],
-    },
-    ["responseHeaders"]
-  );
-}
+      tabToMimeType[details.tabId] =
+        contentTypeHeader && contentTypeHeader.value.split(";", 1)[0];
+    }
+  },
+  {
+    urls: ["*://*/*"],
+    types: ["main_frame"],
+  },
+  ["responseHeaders"]
+);
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === "getMainFramePageLanguageState") {
@@ -77,15 +75,12 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
           sender.tab.id,
           { action: "detectLanguageUsingTextContent" },
           { frameId: 0 },
-          (result) => {
-            checkedLastError();
-            sendResponse(result || "und");
-          }
+          (result) => sendResponse(result)
         );
       } else {
         chrome.tabs.detectLanguage(sender.tab.id, (result) => {
           checkedLastError();
-          sendResponse(result || "und");
+          sendResponse(result);
         });
       }
     } catch (e) {
@@ -160,6 +155,8 @@ function updateContextMenu(pageLanguageState = "original") {
           documentUrlPatterns: [
             "http://*/*",
             "https://*/*",
+            "file://*/*",
+            "ftp://*/*",
           ],
         });
       }
@@ -172,6 +169,8 @@ function updateContextMenu(pageLanguageState = "original") {
           documentUrlPatterns: [
             "http://*/*",
             "https://*/*",
+            "file://*/*",
+            "ftp://*/*",
           ],
         });
       }
@@ -189,6 +188,12 @@ function updateContextMenu(pageLanguageState = "original") {
 chrome.runtime.onInstalled.addListener((details) => {
   if (details.reason == "install") {
     tabsCreate(chrome.runtime.getURL("/options/options.html"));
+    twpConfig.onReady(async () => {
+      if (chrome.i18n.getUILanguage() === "zh-CN") {
+        twpConfig.set("pageTranslatorService", "bing");
+        twpConfig.set("textTranslatorService", "bing");
+      }
+    });
   } else if (
     details.reason == "update" &&
     chrome.runtime.getManifest().version != details.previousVersion
@@ -240,6 +245,11 @@ function resetPageAction(tabId, forceShow = false) {
   } else {
     if (twpConfig.get("useOldPopup") === "yes") {
       chrome.pageAction.setPopup({
+        popup: "popup/old-popup.html",
+        tabId,
+      });
+    } else {
+      chrome.pageAction.setPopup({
         popup: "popup/popup.html",
         tabId,
       });
@@ -254,6 +264,10 @@ function resetBrowserAction(forceShow = false) {
     });
   } else {
     if (twpConfig.get("useOldPopup") === "yes") {
+      chrome.browserAction.setPopup({
+        popup: "popup/old-popup.html",
+      });
+    } else {
       chrome.browserAction.setPopup({
         popup: "popup/popup.html",
       });
@@ -311,6 +325,8 @@ if (typeof chrome.contextMenus !== "undefined") {
     chrome.contextMenus.remove("pageAction-showPopup", checkedLastError);
     chrome.contextMenus.remove("never-translate", checkedLastError);
     chrome.contextMenus.remove("more-options", checkedLastError);
+    chrome.contextMenus.remove("browserAction-translate-pdf", checkedLastError);
+    chrome.contextMenus.remove("pageAction-translate-pdf", checkedLastError);
 
     chrome.contextMenus.create({
       id: "browserAction-showPopup",
@@ -332,6 +348,16 @@ if (typeof chrome.contextMenus !== "undefined") {
       title: twpI18n.getMessage("btnMoreOptions"),
       contexts: ["browser_action", "page_action"],
     });
+    chrome.contextMenus.create({
+      id: "browserAction-translate-pdf",
+      title: twpI18n.getMessage("msgTranslatePDF"),
+      contexts: ["browser_action"],
+    });
+    chrome.contextMenus.create({
+      id: "pageAction-translate-pdf",
+      title: twpI18n.getMessage("msgTranslatePDF"),
+      contexts: ["page_action"],
+    });
   };
   updateActionContextMenu();
 
@@ -347,6 +373,7 @@ if (typeof chrome.contextMenus !== "undefined") {
       const mimeType = tabToMimeType[tab.id];
       if (
         mimeType &&
+        mimeType.toLowerCase() === "application/pdf" &&
         chrome.pageAction &&
         chrome.pageAction.openPopup
       ) {
@@ -412,6 +439,28 @@ if (typeof chrome.contextMenus !== "undefined") {
       twpConfig.addSiteToNeverTranslate(hostname);
     } else if (info.menuItemId == "more-options") {
       tabsCreate(chrome.runtime.getURL("/options/options.html"));
+    } else if (info.menuItemId == "browserAction-translate-pdf") {
+      const mimeType = tabToMimeType[tab.id];
+      if (
+        mimeType &&
+        mimeType.toLowerCase() === "application/pdf" &&
+        typeof chrome.browserAction.openPopup !== "undefined"
+      ) {
+        chrome.browserAction.openPopup();
+      } else {
+        tabsCreate("https://pdf.translatewebpages.org/");
+      }
+    } else if (info.menuItemId == "pageAction-translate-pdf") {
+      const mimeType = tabToMimeType[tab.id];
+      if (
+        mimeType &&
+        mimeType.toLowerCase() === "application/pdf" &&
+        typeof chrome.pageAction.openPopup !== "undefined"
+      ) {
+        chrome.pageAction.openPopup();
+      } else {
+        tabsCreate("https://pdf.translatewebpages.org/");
+      }
     }
   });
 
@@ -565,7 +614,7 @@ twpConfig.onReady(() => {
           ) {
             isFirefoxAlpenglowTheme = true;
           }
-        } catch { }
+        } catch {}
         return isFirefoxAlpenglowTheme;
       };
 
@@ -748,10 +797,10 @@ twpConfig.onReady(() => {
         var result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
         return result
           ? {
-            r: parseInt(result[1], 16),
-            g: parseInt(result[2], 16),
-            b: parseInt(result[3], 16),
-          }
+              r: parseInt(result[1], 16),
+              g: parseInt(result[2], 16),
+              b: parseInt(result[3], 16),
+            }
           : null;
       }
 

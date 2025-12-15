@@ -24,6 +24,12 @@
       },
       "description": "__MSG_msgTranslateSelectedText__"
     },
+    "hotkey-swap-page-translation-service": {
+      "suggested_key": {
+        "default": "Ctrl+Alt+Q"
+      },
+      "description": "__MSG_swapTranslationService__"
+    },
     "hotkey-show-original": {
       "suggested_key": {
         "default": "Shift+Alt+0"
@@ -35,6 +41,18 @@
         "default": "Shift+Alt+1"
       },
       "description": "__MSG_lblTranslatePageToTargetLanguage__ 1"
+    },
+    "hotkey-translate-page-2": {
+      "suggested_key": {
+        "default": "Shift+Alt+2"
+      },
+      "description": "__MSG_lblTranslatePageToTargetLanguage__ 2"
+    },
+    "hotkey-translate-page-3": {
+      "suggested_key": {
+        "default": "Shift+Alt+3"
+      },
+      "description": "__MSG_lblTranslatePageToTargetLanguage__ 3"
     },
     "hotkey-hot-translate-selected-text": {
       "suggested_key": {
@@ -54,13 +72,14 @@
     "activeTab",
     "contextMenus",
     "webRequest"
-
   ],
-  "optional_permissions": [
-    "webNavigation"
-  ],
+  "optional_permissions": ["webNavigation"],
   "web_accessible_resources": [
     "/icons/icon-32.png",
+    "/icons/google-translate-32.png",
+    "/icons/bing-translate-32.png",
+    "/icons/yandex-translate-32.png",
+    "/icons/swap-32.png",
     "/contentScript/css/*",
     "/contentScript/html/*",
     "/_locales/*",
@@ -74,8 +93,7 @@
   "browser_action": {
     "browser_style": false,
     "default_icon": "/icons/icon-32.png",
-    "default_title": "__MSG_pageActionTitle__",
-    "default_popup": "/popup/popup.html"
+    "default_title": "__MSG_pageActionTitle__"
   },
   "page_action": {
     "browser_style": false,
@@ -84,19 +102,13 @@
   },
   "content_scripts": [
     {
-      "matches": [
-        "<all_urls>"
-      ],
+      "matches": ["<all_urls>"],
       "run_at": "document_start",
       "all_frames": false,
-      "js": [
-        "/contentScript/checkScriptIsInjected.js"
-      ]
+      "js": ["/contentScript/checkScriptIsInjected.js"]
     },
     {
-      "matches": [
-        "<all_urls>"
-      ],
+      "matches": ["<all_urls>"],
       "run_at": "document_start",
       "all_frames": true,
       "match_about_blank": true,
@@ -109,9 +121,7 @@
       ]
     },
     {
-      "matches": [
-        "<all_urls>"
-      ],
+      "matches": ["<all_urls>"],
       "run_at": "document_end",
       "all_frames": true,
       "match_about_blank": true,
@@ -124,24 +134,16 @@
       ]
     },
     {
-      "matches": [
-        "<all_urls>"
-      ],
+      "matches": ["<all_urls>"],
       "run_at": "document_end",
       "all_frames": false,
-      "js": [
-        "/contentScript/popupMobile.js"
-      ]
+      "js": ["/contentScript/popupMobile.js"]
     },
     {
-      "matches": [
-        "https://www.deepl.com/*/translator*"
-      ],
+      "matches": ["https://www.deepl.com/*/translator*"],
       "run_at": "document_end",
       "all_frames": false,
-      "js": [
-        "/contentScript/deepl.js"
-      ]
+      "js": ["/contentScript/deepl.js"]
     }
   ],
   "background": {

@@ -50,13 +50,16 @@
     "<all_urls>",
     "storage",
     "activeTab",
-    "contextMenus"
+    "contextMenus",
+    "webRequest"
   ],
-  "optional_permissions": [
-    "webNavigation"
-  ],
+  "optional_permissions": ["webNavigation"],
   "web_accessible_resources": [
     "/icons/icon-32.png",
+    "/icons/google-translate-32.png",
+    "/icons/bing-translate-32.png",
+    "/icons/yandex-translate-32.png",
+    "/icons/swap-32.png",
     "/contentScript/css/*",
     "/contentScript/html/*",
     "/_locales/*",
@@ -74,19 +77,13 @@
   },
   "content_scripts": [
     {
-      "matches": [
-        "<all_urls>"
-      ],
+      "matches": ["<all_urls>"],
       "run_at": "document_start",
       "all_frames": false,
-      "js": [
-        "/contentScript/checkScriptIsInjected.js"
-      ]
+      "js": ["/contentScript/checkScriptIsInjected.js"]
     },
     {
-      "matches": [
-        "<all_urls>"
-      ],
+      "matches": ["<all_urls>"],
       "run_at": "document_start",
       "all_frames": true,
       "match_about_blank": true,
@@ -99,9 +96,7 @@
       ]
     },
     {
-      "matches": [
-        "<all_urls>"
-      ],
+      "matches": ["<all_urls>"],
       "run_at": "document_end",
       "all_frames": true,
       "match_about_blank": true,
@@ -114,24 +109,16 @@
       ]
     },
     {
-      "matches": [
-        "<all_urls>"
-      ],
+      "matches": ["<all_urls>"],
       "run_at": "document_end",
       "all_frames": false,
-      "js": [
-        "/contentScript/popupMobile.js"
-      ]
+      "js": ["/contentScript/popupMobile.js"]
     },
     {
-      "matches": [
-        "https://www.deepl.com/*/translator*"
-      ],
+      "matches": ["https://www.deepl.com/*/translator*"],
       "run_at": "document_end",
       "all_frames": false,
-      "js": [
-        "/contentScript/deepl.js"
-      ]
+      "js": ["/contentScript/deepl.js"]
     }
   ],
   "background": {

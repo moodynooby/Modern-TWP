@@ -335,6 +335,79 @@ const translationService = (function () {
     }
   }
 
+  class BingHelper {
+    /** @type {number} */
+    static #lastRequestAuthTime = null;
+    /** @type {string} */
+    static #translateAuth = null;
+    /** @type {boolean} */
+    static #AuthNotFound = false;
+    /** @type {Promise<void>} */
+    static #authPromise = null;
+
+    static get translateAuth() {
+      return BingHelper.#translateAuth;
+    }
+
+    /**
+     * Find the Auth of Bing Translator. The Auth value is used in translation requests.
+     * @returns {Promise<void>}
+     */
+    static async findAuth() {
+      if (BingHelper.#authPromise) return await BingHelper.#authPromise;
+
+      BingHelper.#authPromise = new Promise((resolve) => {
+        let updateBingAuth = false;
+        if (BingHelper.#lastRequestAuthTime) {
+          const date = new Date();
+          if (BingHelper.#translateAuth) {
+            date.setMinutes(date.getMinutes() - 8);
+          } else if (BingHelper.#AuthNotFound) {
+            date.setMinutes(date.getMinutes() - 5);
+          } else {
+            date.setMinutes(date.getMinutes() - 1);
+          }
+          if (date.getTime() > BingHelper.#lastRequestAuthTime) {
+            updateBingAuth = true;
+          }
+        } else {
+          updateBingAuth = true;
+        }
+
+        if (updateBingAuth) {
+          BingHelper.#lastRequestAuthTime = Date.now();
+
+          const http = new XMLHttpRequest();
+          http.open("GET", "https://edge.microsoft.com/translate/auth");
+          http.send();
+          http.onload = (e) => {
+            if (http.responseText && http.responseText.length > 1) {
+              BingHelper.#translateAuth = http.responseText;
+              BingHelper.#AuthNotFound = false;
+            } else {
+              BingHelper.#AuthNotFound = true;
+            }
+            resolve();
+          };
+          http.onerror =
+            http.onabort =
+            http.ontimeout =
+              (e) => {
+                console.error(e);
+                resolve();
+              };
+        } else {
+          resolve();
+        }
+      });
+
+      BingHelper.#authPromise.finally(() => {
+        BingHelper.#authPromise = null;
+      });
+
+      return await BingHelper.#authPromise;
+    }
+  }
 
   /**
    * Returns a string with additional parameters to be concatenated to the request URL.
@@ -1043,6 +1116,173 @@ const translationService = (function () {
     }
   })();
 
+  const bingService = new (class extends Service {
+    constructor() {
+      super(
+        "bing",
+        "https://api-edge.cognitive.microsofttranslator.com/translate?api-version=3.0&includeSentenceLength=true",
+        "POST",
+        function cbTransformRequest(sourceArray) {
+          let id = 10;
+          return sourceArray
+            .map((value) => {
+              const r = `<b${id}>${Utils.escapeHTML(value)}</b${id}>`;
+              id++;
+              return r;
+            })
+            .join("");
+        },
+        function cbParseResponse(response) {
+          return response.map(
+            /** @return {Service_Single_Result_Response} */
+            (/** @type {object} */ r) => ({
+              text: r.translations[0].text,
+              detectedLanguage: r.detectedLanguage?.language,
+            })
+          );
+        },
+        function cbTransformResponse(result, dontSortResults) {
+          const resultArray = [];
+
+          const parser = new DOMParser();
+          const doc = parser.parseFromString(result, "text/html");
+          let currText = "";
+          doc.body.childNodes.forEach((node) => {
+            if (dontSortResults) {
+              if (node.nodeName == "#text") {
+                currText += node.textContent;
+              } else {
+                resultArray.push(currText + node.textContent);
+                currText = "";
+              }
+            } else {
+              if (node.nodeName == "#text") {
+                currText += node.textContent;
+              } else {
+                const id = parseInt(node.nodeName.slice(1)) - 10;
+                resultArray[id] = currText + node.textContent;
+                currText = "";
+              }
+            }
+          });
+
+          return resultArray;
+        },
+        function cbGetExtraParameters(
+          sourceLanguage,
+          targetLanguage,
+          requests
+        ) {
+          return `${
+            sourceLanguage !== "auto-detect" ? "&from=" + sourceLanguage : ""
+          }&to=${targetLanguage}`;
+        },
+        function cbGetRequestBody(sourceLanguage, targetLanguage, requests) {
+          return JSON.stringify(
+            requests.map((info) => ({
+              text: info.originalText,
+            }))
+          );
+        },
+        function cbGetExtraHeaders() {
+          return [
+            {
+              name: "Content-Type",
+              value: "application/json",
+            },
+            {
+              name: "authorization",
+              value: "Bearer " + BingHelper.translateAuth,
+            },
+          ];
+        }
+      );
+    }
+
+    /**
+     * @param {string[][]} sourceArray2d - Only the string `sourceArray2d[0][0]` will be translated.
+     * @param {boolean} dontSortResults - This parameter is not needed in this translation service
+     */
+    async translate(
+      sourceLanguage,
+      targetLanguage,
+      sourceArray2d,
+      dontSaveInPersistentCache,
+      dontSortResults = false
+    ) {
+      /** @type {{search: string, replace: string}[]} */
+      const replacements = [
+        {
+          search: "auto",
+          replace: "auto-detect",
+        },
+        {
+          search: "zh-CN",
+          replace: "zh-Hans",
+        },
+        {
+          search: "zh-TW",
+          replace: "zh-Hant",
+        },
+        {
+          search: "tl",
+          replace: "fil",
+        },
+        {
+          search: "hmn",
+          replace: "mww",
+        },
+        {
+          search: "ku",
+          replace: "kmr",
+        },
+        {
+          search: "ckb",
+          replace: "ku",
+        },
+        {
+          search: "mn",
+          replace: "mn-Cyrl",
+        },
+        {
+          search: "no",
+          replace: "nb",
+        },
+        {
+          search: "lg",
+          replace: "lug",
+        },
+        {
+          search: "sr",
+          replace: "sr-Cyrl",
+        },
+        {
+          search: "mni-Mtei",
+          replace: "mni",
+        },
+      ];
+      replacements.forEach((r) => {
+        if (targetLanguage === r.search) {
+          targetLanguage = r.replace;
+        }
+        if (sourceLanguage === r.search) {
+          sourceLanguage = r.replace;
+        }
+      });
+
+      await BingHelper.findAuth();
+      if (!BingHelper.translateAuth) return;
+
+      return await super.translate(
+        sourceLanguage,
+        targetLanguage,
+        sourceArray2d,
+        dontSaveInPersistentCache,
+        dontSortResults
+      );
+    }
+  })();
+
   const deeplService = new (class {
     constructor() {
       this.DeepLTab = null;
@@ -1139,6 +1379,76 @@ const translationService = (function () {
   })();
 
   /**
+   * Creates the libreTranslate translation service from URL and apiKey
+   * @param {string} url
+   * @param {string} apiKey
+   * @returns {Service} libreService
+   */
+  const createLibreService = (url, apiKey) => {
+    return new (class extends Service {
+      constructor() {
+        super(
+          "libre",
+          url,
+          "POST",
+          function cbTransformRequest(sourceArray) {
+            return sourceArray[0];
+          },
+          function cbParseResponse(response) {
+            return [
+              {
+                text: response.translatedText,
+                detectedLanguage: response.detectedLanguage.language,
+              },
+            ];
+          },
+          function cbTransformResponse(result, dontSortResults) {
+            return [result];
+          },
+          null,
+          function cbGetRequestBody(sourceLanguage, targetLanguage, requests) {
+            const params = new URLSearchParams();
+            params.append("q", requests[0].originalText);
+            params.append("source", sourceLanguage);
+            params.append("target", targetLanguage);
+            params.append("format", "text");
+            params.append("api_key", apiKey);
+            return params.toString();
+          },
+          function cbGetExtraHeaders() {
+            return [
+              {
+                name: "Content-Type",
+                value: "application/x-www-form-urlencoded",
+              },
+            ];
+          }
+        );
+      }
+
+      /**
+       *
+       * @param {string} sourceLanguage - This parameter is not used
+       * @param {*} targetLanguage
+       * @param {*} sourceArray2d - Only the string `sourceArray2d[0][0]` will be translated.
+       * @param {*} dontSaveInPersistentCache - This parameter is not used
+       * @param {*} dontSortResults - This parameter is not used
+       * @returns
+       */
+      /*
+      async translate(
+        sourceLanguage,
+        targetLanguage,
+        sourceArray2d,
+        dontSaveInPersistentCache,
+        dontSortResults = false
+      ) {
+      }
+      //*/
+    })();
+  };
+
+  /**
    * Creates the DeepLFreeApi translation service
    * @param {string} apiKey
    * @returns {Service} libreService
@@ -1226,6 +1536,7 @@ const translationService = (function () {
 
   serviceList.set("google", googleService);
   serviceList.set("yandex", yandexService);
+  serviceList.set("bing", bingService);
   serviceList.set(
     "deepl",
     /** @type {Service} */ /** @type {?} */ (deeplService)
@@ -1381,6 +1692,13 @@ const translationService = (function () {
           service.removeTranslationsWithError();
         }
       });
+    } else if (request.action === "createLibreService") {
+      serviceList.set(
+        "libre",
+        createLibreService(request.libre.url, request.libre.apiKey)
+      );
+    } else if (request.action === "removeLibreService") {
+      serviceList.delete("libre");
     } else if (request.action === "createDeeplFreeApiService") {
       serviceList.set(
         "deepl",
@@ -1395,6 +1713,13 @@ const translationService = (function () {
   });
 
   twpConfig.onReady(function () {
+    if (twpConfig.get("customServices").find((cs) => cs.name === "libre")) {
+      const libre = twpConfig
+        .get("customServices")
+        .find((cs) => cs.name === "libre");
+      serviceList.set("libre", createLibreService(libre.url, libre.apiKey));
+    }
+
     if (
       twpConfig.get("customServices").find((cs) => cs.name === "deepl_freeapi")
     ) {
