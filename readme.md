@@ -6,8 +6,6 @@ A fast, lightweight translation extension for Firefox (with unofficial Chromium 
 Quicky Translate is a modern translation extension that brings instant translations to your browser. Clean interface, fast performance, and zero clutter—just select text and translate.
 
 ## Links
-- [Build Instructions](build-instructions.md)
-- [License](LICENSE)
 - [Github](https://github.com/moodynooby/Modern-TWP)
 - [Addons](https://addons.mozilla.org/en-US/firefox/addon/quickytranslate/)
 
@@ -21,8 +19,7 @@ Quicky Translate is a modern translation extension that brings instant translati
   - Customize translation behavior
 
 ## Demo / Screenshots
-(No demo or screenshots provided in the original README.)
-
+![Demo](image.png)
 ## Setup
 
 ### Installation
