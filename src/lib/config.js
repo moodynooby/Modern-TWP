@@ -32,7 +32,7 @@ const twpConfig = (function () {
     showOriginalTextWhenHovering: "no",
     showTranslateSelectedButton: "yes",
     whenShowMobilePopup: "when-necessary", // when-necessary only-when-i-touch always-show
-    useOldPopup: "yes",
+    useOldPopup: "no",
     darkMode: "auto", // auto yes no
     popupBlueWhenSiteIsTranslated: "yes",
     popupPanelSection: 1,
