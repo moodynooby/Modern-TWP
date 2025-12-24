@@ -5,11 +5,13 @@ const gulp = require("gulp");
 const zip = require("gulp-zip");
 const babel = require("gulp-babel");
 const sourcemaps = require("gulp-sourcemaps");
+const terser = require("gulp-terser");
 
 const crx3 = require("crx3");
 
+const isProd = process.env.NODE_ENV === "production";
 const remoteSourceMaps =
-  process.argv[2] === "--local-sourcemaps" ? false : true;
+  process.argv[2] === "--local-sourcemaps" ? false : !isProd;
 const version = JSON.parse(
   fs.readFileSync("src/manifest.json", "utf8")
 ).version;
@@ -35,15 +37,13 @@ const babelConfig = {
           firefox: "64",
           chrome: "70",
         },
+        modules: false,
         // corejs: 3,
         // useBuiltIns: "usage",
       },
     ],
   ],
-  plugins: [
-    // ["@babel/plugin-transform-runtime"],
-    // ["@babel/plugin-syntax-dynamic-import"],
-  ],
+  plugins: [],
 };
 
 gulp.task("clean", (cb) => {
@@ -58,57 +58,46 @@ gulp.task("firefox-copy", () => {
 });
 
 gulp.task("firefox-babel", () => {
+  const buildJs = (subdir) =>
+    new Promise((resolve, reject) => {
+      let stream = gulp.src([`build/${firefox_folder_name}/${subdir}/*.js`], {
+        encoding: false,
+      });
+
+      if (!isProd) {
+        stream = stream.pipe(sourcemaps.init());
+      }
+
+      stream = stream.pipe(babel(babelConfig));
+
+      if (isProd) {
+        stream = stream.pipe(
+          terser({
+            compress: {
+              drop_console: true,
+              drop_debugger: true,
+            },
+            mangle: true,
+          })
+        );
+      }
+
+      if (!isProd) {
+        stream = stream.pipe(sourcemaps.write(mappath, mapconfig));
+      }
+
+      stream
+        .on("error", reject)
+        .pipe(gulp.dest(`build/${firefox_folder_name}/${subdir}`))
+        .on("end", resolve);
+    });
+
   return Promise.all([
-    new Promise((resolve, reject) => {
-      gulp
-        .src([`build/${firefox_folder_name}/background/*.js`], { encoding: false })
-        .pipe(sourcemaps.init())
-        .pipe(babel(babelConfig))
-        .pipe(sourcemaps.write(mappath, mapconfig))
-        .on("error", reject)
-        .pipe(gulp.dest(`build/${firefox_folder_name}/background`))
-        .on("end", resolve);
-    }),
-    new Promise((resolve, reject) => {
-      gulp
-        .src([`build/${firefox_folder_name}/lib/*.js`], { encoding: false })
-        .pipe(sourcemaps.init())
-        .pipe(babel(babelConfig))
-        .pipe(sourcemaps.write(mappath, mapconfig))
-        .on("error", reject)
-        .pipe(gulp.dest(`build/${firefox_folder_name}/lib`))
-        .on("end", resolve);
-    }),
-    new Promise((resolve, reject) => {
-      gulp
-        .src([`build/${firefox_folder_name}/contentScript/*.js`], { encoding: false })
-        .pipe(sourcemaps.init())
-        .pipe(babel(babelConfig))
-        .pipe(sourcemaps.write(mappath, mapconfig))
-        .on("error", reject)
-        .pipe(gulp.dest(`build/${firefox_folder_name}/contentScript`))
-        .on("end", resolve);
-    }),
-    new Promise((resolve, reject) => {
-      gulp
-        .src([`build/${firefox_folder_name}/options/*.js`], { encoding: false })
-        .pipe(sourcemaps.init())
-        .pipe(babel(babelConfig))
-        .pipe(sourcemaps.write(mappath, mapconfig))
-        .on("error", reject)
-        .pipe(gulp.dest(`build/${firefox_folder_name}/options`))
-        .on("end", resolve);
-    }),
-    new Promise((resolve, reject) => {
-      gulp
-        .src([`build/${firefox_folder_name}/popup/*.js`], { encoding: false })
-        .pipe(sourcemaps.init())
-        .pipe(babel(babelConfig))
-        .pipe(sourcemaps.write(mappath, mapconfig))
-        .on("error", reject)
-        .pipe(gulp.dest(`build/${firefox_folder_name}/popup`))
-        .on("end", resolve);
-    }),
+    buildJs("background"),
+    buildJs("lib"),
+    buildJs("contentScript"),
+    buildJs("options"),
+    buildJs("popup"),
   ]);
 });
 

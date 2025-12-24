@@ -34,6 +34,31 @@ twpConfig
     let currentTargetLanguages = twpConfig.get("targetLanguages");
     let currentTargetLanguage = twpConfig.get("targetLanguageTextTranslation");
     let currentTextTranslatorService = twpConfig.get("textTranslatorService");
+    const textCache = new Map();
+    const TEXT_CACHE_TTL = 2 * 60 * 1000;
+    let translateRequestId = 0;
+
+    const makeCacheKey = (service, targetLanguage, text) =>
+      [service, targetLanguage, text].join("|");
+
+    const readFromCache = (key) => {
+      const cached = textCache.get(key);
+      if (cached && Date.now() - cached.ts < TEXT_CACHE_TTL) {
+        return cached.value;
+      }
+      if (cached) {
+        textCache.delete(key);
+      }
+      return null;
+    };
+
+    const writeToCache = (key, value) => {
+      textCache.set(key, { value, ts: Date.now() });
+      if (textCache.size > 100) {
+        const oldestKey = textCache.keys().next().value;
+        textCache.delete(oldestKey);
+      }
+    };
 
     function disableDarkMode() {
       if (!document.getElementById("lightModeElement")) {
@@ -422,18 +447,61 @@ twpConfig
     function translateText() {
       stopAudio();
 
+      const sourceText = eOrigText.textContent.trim();
+      if (!sourceText) {
+        eTextTranslated.textContent = "";
+        return;
+      }
+
+      const cacheKey = makeCacheKey(
+        currentTextTranslatorService,
+        currentTargetLanguage,
+        sourceText
+      );
+      const cached = readFromCache(cacheKey);
+      if (cached) {
+        if (twpLang.isRtlLanguage(currentTargetLanguage)) {
+          eTextTranslated.setAttribute("dir", "rtl");
+        } else {
+          eTextTranslated.setAttribute("dir", "ltr");
+        }
+        eTextTranslated.textContent = cached;
+        return;
+      }
+
+      const requestId = ++translateRequestId;
+      const startedAt =
+        typeof performance !== "undefined" && performance.now
+          ? performance.now()
+          : Date.now();
+
       backgroundTranslateSingleText(
         currentTextTranslatorService,
         "auto",
         currentTargetLanguage,
-        eOrigText.textContent
+        sourceText
       ).then((result) => {
+        if (requestId !== translateRequestId) return;
         if (twpLang.isRtlLanguage(currentTargetLanguage)) {
           eTextTranslated.setAttribute("dir", "rtl");
         } else {
           eTextTranslated.setAttribute("dir", "ltr");
         }
         eTextTranslated.textContent = result;
+        if (typeof result !== "undefined") {
+          writeToCache(cacheKey, result);
+        }
+        const durationMs = Math.round(
+          (typeof performance !== "undefined" && performance.now
+            ? performance.now()
+            : Date.now()) - startedAt
+        );
+        console.debug("[twp][perf] popup-translate-text", {
+          service: currentTextTranslatorService,
+          targetLanguage: currentTargetLanguage,
+          durationMs,
+          cached: false,
+        });
       });
     }
 

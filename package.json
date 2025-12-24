@@ -6,9 +6,9 @@
     "chrome 70"
   ],
   "scripts": {
-    "build": "npx gulp",
-    "build:local-sourcemaps": "npx gulp --local-sourcemaps",
-    "build:sign": "npx gulp --sign",
+    "build": "NODE_ENV=production npx gulp",
+    "build:local-sourcemaps": "NODE_ENV=development npx gulp --local-sourcemaps",
+    "build:sign": "NODE_ENV=production npx gulp --sign",
     "polyfill": "npx webpack --entry=./polyfill.js --output-path=./src/lib --output-filename=polyfill.js -d inline-source-map"
   },
   "dependencies": {
@@ -22,6 +22,7 @@
     "gulp": "^5.0.0",
     "gulp-babel": "^8.0.0",
     "gulp-sourcemaps": "^3.0.0",
+    "gulp-terser": "^2.1.0",
     "gulp-zip": "^5.1.0",
     "node-file-dialog": "^1.0.3",
     "webpack": "^5.94.0",

@@ -460,11 +460,34 @@ const translationService = (function () {
    * @property {String} detectedLanguage
    * @property {TranslationStatus} status
    * @property {Promise<void>} waitTranlate
+   * @property {boolean} fromCache
    */
 
   /**
    * Base class to create new translation services.
    */
+  const perfLogger = {
+    /**
+     * Logs lightweight timing info for translation flows.
+     * @param {string} serviceName
+     * @param {string} sourceLanguage
+     * @param {string} targetLanguage
+     * @param {{durationMs:number,totalSegments:number,cacheHits:number,networkRequests:number,segmentsRequested:number,errors:number}} payload
+     */
+    logTranslate(serviceName, sourceLanguage, targetLanguage, payload) {
+      try {
+        console.debug("[twp][perf] translate", {
+          serviceName,
+          sourceLanguage,
+          targetLanguage,
+          ...payload,
+        });
+      } catch (e) {
+        // ignore logging errors to avoid breaking flow
+      }
+    },
+  };
+
   class Service {
     /**
      * Initializes the **Service** class with information about the new translation service.
@@ -569,6 +592,7 @@ const translationService = (function () {
             originalText: requestString,
             translatedText: null,
             detectedLanguage: null,
+            fromCache: false,
             get status() {
               return status;
             },
@@ -592,6 +616,7 @@ const translationService = (function () {
           if (cacheEntry) {
             progressInfo.translatedText = cacheEntry.translatedText;
             progressInfo.detectedLanguage = cacheEntry.detectedLanguage;
+            progressInfo.fromCache = true;
             progressInfo.status = "complete";
             //this.translationsInProgress.delete([sourceLanguage, targetLanguage, requestString])
           } else {
@@ -686,10 +711,18 @@ const translationService = (function () {
       dontSaveInPersistentCache = false,
       dontSortResults = false
     ) {
+      const translateStart =
+        typeof performance !== "undefined" && performance.now
+          ? performance.now()
+          : Date.now();
       const [requests, currentTranslationsInProgress] = await this.getRequests(
         sourceLanguage,
         targetLanguage,
         sourceArray2d
+      );
+      const segmentsRequested = requests.reduce(
+        (acc, request) => acc + request.length,
+        0
       );
       /** @type {Promise<void>[]} */
       const promises = [];
@@ -734,6 +767,25 @@ const translationService = (function () {
       await Promise.all(
         currentTranslationsInProgress.map((transInfo) => transInfo.waitTranlate)
       );
+      const cacheHits = currentTranslationsInProgress.filter(
+        (transInfo) => transInfo.fromCache
+      ).length;
+      const errors = currentTranslationsInProgress.filter(
+        (transInfo) => transInfo.status === "error"
+      ).length;
+      const durationMs = Math.round(
+        (typeof performance !== "undefined" && performance.now
+          ? performance.now()
+          : Date.now()) - translateStart
+      );
+      perfLogger.logTranslate(this.serviceName, sourceLanguage, targetLanguage, {
+        durationMs,
+        totalSegments: currentTranslationsInProgress.length,
+        cacheHits,
+        networkRequests: requests.length,
+        segmentsRequested,
+        errors,
+      });
       return currentTranslationsInProgress.map((transInfo) =>
         this.cbTransformResponse(transInfo.translatedText, dontSortResults)
       );

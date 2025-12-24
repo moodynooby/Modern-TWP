@@ -113,7 +113,10 @@ const translationCache = (function () {
      * @returns {Promise<string>} Promise\<sha1String\>
      */
     static async stringToSHA1String(message) {
-      const msgUint8 = new TextEncoder().encode(message); // encode as (utf-8) Uint8Array
+      if (!Utils.encoder) {
+        Utils.encoder = new TextEncoder();
+      }
+      const msgUint8 = Utils.encoder.encode(message); // encode as (utf-8) Uint8Array
       const hashBuffer = await crypto.subtle.digest("SHA-1", msgUint8); // hash the message
       const hashArray = Array.from(new Uint8Array(hashBuffer)); // convert buffer to byte array
       return hashArray.map((b) => b.toString(16).padStart(2, "0")).join(""); // convert bytes to hex string
@@ -136,6 +139,8 @@ const translationCache = (function () {
       this.targetLanguage = targetLanguage;
       /** @type {Map<string, CacheEntry>} */
       this.cache = new Map();
+      /** @type {Map<string, {entry: CacheEntry, ts: number}>} */
+      this.memoryCache = new Map();
       /** @type {Promise<boolean>} */
       this.promiseStartingCache = null;
     }
@@ -212,11 +217,25 @@ const translationCache = (function () {
     async query(originalText) {
       const hash = await Utils.stringToSHA1String(originalText);
 
+      const memoized = this.memoryCache.get(hash);
+      const now = Date.now();
+      if (memoized && now - memoized.ts < Cache.MEMORY_CACHE_TTL) {
+        return memoized.entry;
+      } else if (memoized) {
+        this.memoryCache.delete(hash);
+      }
+
       let translation = this.cache.get(hash);
-      if (translation) return translation;
+      if (translation) {
+        this.#setMemoryCache(hash, translation);
+        return translation;
+      }
 
       translation = await this.#queryInDB(hash);
-      if (translation) this.cache.set(hash, translation);
+      if (translation) {
+        this.cache.set(hash, translation);
+        this.#setMemoryCache(hash, translation);
+      }
 
       return translation;
     }
@@ -256,12 +275,27 @@ const translationCache = (function () {
      */
     async add(originalText, translatedText, detectedLanguage = "und") {
       const hash = await Utils.stringToSHA1String(originalText);
-      return await this.#addInDb({
+      const entry = {
         originalText,
         translatedText,
         detectedLanguage,
         key: hash,
-      });
+      };
+      this.#setMemoryCache(hash, entry);
+      return await this.#addInDb(entry);
+    }
+
+    /**
+     * Stores entry in the in-memory cache with eviction.
+     * @param {string} hash
+     * @param {CacheEntry} entry
+     */
+    #setMemoryCache(hash, entry) {
+      this.memoryCache.set(hash, { entry, ts: Date.now() });
+      while (this.memoryCache.size > Cache.MEMORY_CACHE_MAX) {
+        const oldestKey = this.memoryCache.keys().next().value;
+        this.memoryCache.delete(oldestKey);
+      }
     }
 
     /**
@@ -383,6 +417,9 @@ const translationCache = (function () {
       });
     }
   }
+
+  Cache.MEMORY_CACHE_MAX = 200;
+  Cache.MEMORY_CACHE_TTL = 5 * 60 * 1000;
 
   class CacheList {
     /**

@@ -32,6 +32,28 @@ Promise.all([twpConfig.onReady(), getTabHostName()]).then(function (_) {
   let currentTargetLanguages = twpConfig.get("targetLanguages");
   let currentTargetLanguage = twpConfig.get("targetLanguageTextTranslation");
   let currentTextTranslatorService = twpConfig.get("textTranslatorService");
+  const transientCache = new Map();
+  const TRANSIENT_CACHE_TTL = 2 * 60 * 1000;
+  let translateSelectedRequestId = 0;
+  const makeCacheKey = (service, targetLanguage, text) =>
+    [service, targetLanguage, text].join("|");
+  const readCachedTranslation = (key) => {
+    const cached = transientCache.get(key);
+    if (cached && Date.now() - cached.ts < TRANSIENT_CACHE_TTL) {
+      return cached.value;
+    }
+    if (cached) {
+      transientCache.delete(key);
+    }
+    return null;
+  };
+  const writeCachedTranslation = (key, value) => {
+    transientCache.set(key, { value, ts: Date.now() });
+    if (transientCache.size > 150) {
+      const oldestKey = transientCache.keys().next().value;
+      transientCache.delete(oldestKey);
+    }
+  };
   let awaysTranslateThisSite =
     twpConfig.get("alwaysTranslateSites").indexOf(tabHostName) !== -1;
   let translateThisSite =
@@ -920,14 +942,39 @@ Promise.all([twpConfig.onReady(), getTabHostName()]).then(function (_) {
     const currentFooCount = fooCount;
     stopAudio();
 
+    const sourceText = eOrigText.textContent.trim();
+    if (!sourceText) {
+      eSelTextTrans.textContent = "";
+      return;
+    }
+
+    const cacheKey = makeCacheKey(
+      currentTextTranslatorService,
+      currentTargetLanguage,
+      sourceText
+    );
+    const cached = readCachedTranslation(cacheKey);
+    if (cached) {
+      if (currentFooCount !== fooCount) return;
+      update_eDivResult(cached);
+      return;
+    }
+
+    const requestId = ++translateSelectedRequestId;
     backgroundTranslateSingleText(
       currentTextTranslatorService,
       "auto",
       currentTargetLanguage,
-      eOrigText.textContent
+      sourceText
     ).then((result) => {
-      if (currentFooCount !== fooCount) return;
-
+      if (
+        currentFooCount !== fooCount ||
+        requestId !== translateSelectedRequestId
+      )
+        return;
+      if (typeof result !== "undefined") {
+        writeCachedTranslation(cacheKey, result);
+      }
       update_eDivResult(result);
     });
   }
